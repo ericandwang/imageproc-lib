@@ -1,5 +1,5 @@
-/*
- * Copyright (c) 2007-2012, Regents of the University of California
+/**
+ * Copyright (c) 2008-2012, Regents of the University of California
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,38 +27,46 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  *
- * Header for the battery supervisor module
+ * System Time Module
  *
- * by Fernando L. Garcia Bermudez and Stanley S. Baek
+ * by Stanley S. Baek and Humphrey Hu
  *
  * v.0.2
  *
  * Usage:
- *  #include "battery.h"
+ *   #include "sclock.h"
+ *   #include "utils.h"
  *
- *  // Initialize battery supervisor
- *  batSetup();
+ *   unsigned long time_elapsed;
  *
- *  // When the battery's voltage falls below the supervisor's threshold, the
- *  // interrupt will trip. If you'd like to stop all running motors when this
- *  // happens, please define __LOWBATT_STOPS_MOTORS in your project.
+ *   // initialize system time module
+ *   sclockSetup();
  *
+ *   // delay for .5 sec
+ *   delay_us(500);
+ *
+ *   time_elapsed = sclockGetTime();
+ *   // time_elapsed should hold a value of ~500.
  */
 
-#ifndef __BATTERY_H
-#define __BATTERY_H
+#ifndef __SCLOCK_H
+#define __SCLOCK_H
 
-typedef void (*BatteryEventISR)(void);
 
-/**
- * Set up the battery supervisor module
- */
-void batSetup(void);
+// Handles initialization of required timers and resets time to 0.
+void sclockSetup(void);
 
-/**
- * Specify a function to call on battery supervisor events
- * @param isr - Battery event callback function pointer
- */
-void batSetCallback(BatteryEventISR isr);
+// Requests number of ticks since the clock was started.
+//
+// 5 ticks add up to a microsecond elapsed.
+//
+// Returns : clock ticks
+unsigned long sclockGetTicks(void);
 
-#endif
+// Requests number of microseconds since the clock was started.
+//
+// Returns : time in microseconds
+unsigned long sclockGetTime(void);
+
+
+#endif //  __SCLOCK_H

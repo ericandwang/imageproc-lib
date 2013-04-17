@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Regents of the University of California
+ * Copyright (c) 2012-2013, Regents of the University of California
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,51 +27,74 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  *
- * Generalized integer PID module
+ * InvenSense MPU-6000 6-axis MEMS Driver
  *
- * by Andrew Pullin
+ * by Richard J. Sheperd
  *
- * v.0.1
+ * v.alpha
  */
 
-#ifndef __PID_H
-#define __PID_H
+#ifndef __MPU6000_H
+#define __MPU6000_H
 
-//DSP dependent include
-#ifdef PID_HARDWARE
-#include <dsp.h>
-#endif
 
-#define PID_ON  1
-#define PID_OFF 0
+// Registers
+#define MPU_REG_RATEDIV (25)
+#define MPU_REG_CONFIG (26)
+#define MPU_REG_GYROCONFIG (27)
+#define MPU_REG_XLCONFIG (28)
+#define MPU_REG_FIFOEN (35)
+#define MPU_REG_I2CMASTCON (36)
+#define MPU_REG_I2CMASTSTAT (54)
+#define MPU_REG_INTENABLE (56)
+#define MPU_REG_INTSTAT (57)
+#define MPU_REG_XLBASE (59)
+#define MPU_XLLEN (6)
+#define MPU_REG_TEMPBASE (65)
+#define MPU_TEMPLEN (2)
+#define MPU_REG_GYROBASE (67)
+#define MPU_GYROLEN (6)
+#define MPU_REG_USERCON (106)
+#define MPU_REG_PMGT1 (107)
+#define MPU_REG_PMGT2 (108)
+#define MPU_REG_FIFOCNTH (114) // Not sure if high or low
+#define MPU_REG_FIFOCNTL (115)
+#define MPU_REG_FIFORW (116)
+#define MPU_REG_WHOAMI (117)
 
-//Structures and enums
-//PID Continer structure
 
-typedef struct {
+// Internal data buffer
+ typedef struct {
+    int xl_data[3];
+    int gyro_data[3];
+    int temp;   // temperature
+} mpuObj;
 
-    int input;
-    long dState, iState, preSat, p, i, d;
-    int Kp, Ki, Kd, Kaw, y_old, output;
-    unsigned char N;
-    char onoff; //boolean
-    long error;
-    unsigned long run_time;
-    unsigned long start_time;
-    int inputOffset;
-    int Kff;
-    int maxVal, minVal;
-    int satValPos, satValNeg;
-#ifdef PID_HARDWARE
-    tPID dspPID;
-#endif
-} pidObj;
 
-//Functions
-void pidUpdate(pidObj *pid, int feedback);
-void pidInitPIDObj(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidSetInput(pidObj *pid, int feedback);
-void pidSetGains(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidOnOff(pidObj *pid, unsigned char state);
+// Setup device
+//  cs = chip select index
+void mpuSetup(unsigned char cs);
 
-#endif // __PID_H
+// Run calibration routine
+void mpuRunCalib(unsigned int discard, unsigned int count);
+
+// Set sleep mode
+void mpuSetSleep(unsigned char mode);
+
+// 3 ints
+void mpuGetGyro(int* buff);
+// 3 ints
+void mpuGetXl(int* buff);
+// 1 int
+void mpuGetTemp(int* buff);
+
+float mpuGetGyroScale(void);
+float mpuGetXlScale(void);
+float mpuGetTempScale(void);
+
+// Read data from MPU
+// This begins an asynchronous update.
+void mpuBeginUpdate(void);
+
+
+#endif // __MPU6000_H

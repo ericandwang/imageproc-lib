@@ -27,51 +27,36 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  *
- * Generalized integer PID module
+ * Header for wrapper of UART read/write functionality with packet parsing
  *
- * by Andrew Pullin
+ * by Austin D. Buchan
  *
- * v.0.1
+ * v.beta
  */
 
-#ifndef __PID_H
-#define __PID_H
+#include "uart.h"
+#include "payload.h"
+#include "mac_packet.h"
 
-//DSP dependent include
-#ifdef PID_HARDWARE
-#include <dsp.h>
-#endif
+#include <stdio.h>
 
-#define PID_ON  1
-#define PID_OFF 0
+#ifndef UART_H
+#define	UART_H
 
-//Structures and enums
-//PID Continer structure
+#define UART_TX_IDLE        0xFF
+#define UART_TX_SEND_SIZE   0xFE
 
-typedef struct {
+#define UART_RX_IDLE        0xFF
+#define UART_RX_CHECK_SIZE  0xFE
 
-    int input;
-    long dState, iState, preSat, p, i, d;
-    int Kp, Ki, Kd, Kaw, y_old, output;
-    unsigned char N;
-    char onoff; //boolean
-    long error;
-    unsigned long run_time;
-    unsigned long start_time;
-    int inputOffset;
-    int Kff;
-    int maxVal, minVal;
-    int satValPos, satValNeg;
-#ifdef PID_HARDWARE
-    tPID dspPID;
-#endif
-} pidObj;
+#define UART_MAX_SIZE 200
 
-//Functions
-void pidUpdate(pidObj *pid, int feedback);
-void pidInitPIDObj(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidSetInput(pidObj *pid, int feedback);
-void pidSetGains(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidOnOff(pidObj *pid, unsigned char state);
+typedef void (*packet_callback)(MacPacket);
 
-#endif // __PID_H
+void uartInit(packet_callback rx_cb);
+unsigned char uartSend(unsigned char length,unsigned char *frame);
+unsigned char uartSendPayload(unsigned char type, unsigned char status, unsigned char length, unsigned char *frame);
+unsigned char uartSendPacket(MacPacket packet);
+
+#endif	/* UART_H */
+

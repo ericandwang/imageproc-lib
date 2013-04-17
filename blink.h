@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, Regents of the University of California
+ * Copyright (c) 2012-2013, Regents of the University of California
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -27,51 +27,20 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  *
- * Generalized integer PID module
+ * Blink LEDs
  *
- * by Andrew Pullin
+ * by Ronald S. Fearing
  *
- * v.0.1
+ * v.beta
  */
 
-#ifndef __PID_H
-#define __PID_H
+#ifndef __BLINK_H
+#define __BLINK_H
 
-//DSP dependent include
-#ifdef PID_HARDWARE
-#include <dsp.h>
-#endif
+// Blink LEDs even if interrupts override LED setting
+//
+// n number of blinks, k number of milliseconds
+void blink_leds(int n, int k);
 
-#define PID_ON  1
-#define PID_OFF 0
 
-//Structures and enums
-//PID Continer structure
-
-typedef struct {
-
-    int input;
-    long dState, iState, preSat, p, i, d;
-    int Kp, Ki, Kd, Kaw, y_old, output;
-    unsigned char N;
-    char onoff; //boolean
-    long error;
-    unsigned long run_time;
-    unsigned long start_time;
-    int inputOffset;
-    int Kff;
-    int maxVal, minVal;
-    int satValPos, satValNeg;
-#ifdef PID_HARDWARE
-    tPID dspPID;
-#endif
-} pidObj;
-
-//Functions
-void pidUpdate(pidObj *pid, int feedback);
-void pidInitPIDObj(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidSetInput(pidObj *pid, int feedback);
-void pidSetGains(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidOnOff(pidObj *pid, unsigned char state);
-
-#endif // __PID_H
+#endif // __BLINK_H

@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright (c) 2012, Regents of the University of California
  * All rights reserved.
  *
@@ -27,51 +27,58 @@
  * POSSIBILITY OF SUCH DAMAGE.
  *
  *
- * Generalized integer PID module
+ * Packet Pool
  *
- * by Andrew Pullin
+ * by Humphrey Hu
  *
- * v.0.1
+ * Description:
+ *  The packet pool is a static set of FastQueue, MacPacket, and Payload
+ *  objects that provide a pool of packet/payloads for use with the radio.
+ *  Requesting and returning these resources is faster and more stable than
+ *  continually creating and destroying them.
+ *
+ * Usage:
+ *  All the rules for video rentals apply to packet rentals.
+ *      - Check the rental (for NULL) before using it
+ *      - Don't return rentals damaged or altered
+ *      - Don't return rentals more than once
+ *      - Don't use rentals after returning them
+ *
+ *  To request a packet or payload:
+ *      // Call the respective method
+ *      MacPacket packet = ppoolRequestPacket();
+ *      if(packet == NULL) {
+ *          // Handle request failure
+ *      }
+ *
+ *  To return a packet or payload:
+ *      if(!ppoolReturnPacket(packet)) {
+ *          // Handle return failure
+ *      }
+ *
  */
 
-#ifndef __PID_H
-#define __PID_H
+#ifndef __PPOOL_H_
 
-//DSP dependent include
-#ifdef PID_HARDWARE
-#include <dsp.h>
+#define __PPOOL_H
+
+#include "mac_packet.h"
+
+// Initialize packet pool module
+unsigned int ppoolInit(void);
+// Free module resources
+void ppoolClose(void);
+
+// Request a mac packet + payload
+MacPacket ppoolRequestFullPacket(unsigned int size);
+unsigned int ppoolReturnFullPacket(MacPacket packet);
+
+// Request/return a mac packet
+MacPacket ppoolRequestPacket(void);
+unsigned int ppoolReturnPacket(MacPacket packet);
+
+// Request/return a payload
+Payload ppoolRequestPayload(unsigned int size);
+unsigned int ppoolReturnPayload(Payload pld);
+
 #endif
-
-#define PID_ON  1
-#define PID_OFF 0
-
-//Structures and enums
-//PID Continer structure
-
-typedef struct {
-
-    int input;
-    long dState, iState, preSat, p, i, d;
-    int Kp, Ki, Kd, Kaw, y_old, output;
-    unsigned char N;
-    char onoff; //boolean
-    long error;
-    unsigned long run_time;
-    unsigned long start_time;
-    int inputOffset;
-    int Kff;
-    int maxVal, minVal;
-    int satValPos, satValNeg;
-#ifdef PID_HARDWARE
-    tPID dspPID;
-#endif
-} pidObj;
-
-//Functions
-void pidUpdate(pidObj *pid, int feedback);
-void pidInitPIDObj(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidSetInput(pidObj *pid, int feedback);
-void pidSetGains(pidObj *pid, int Kp, int Ki, int Kd, int Kaw, int ff);
-void pidOnOff(pidObj *pid, unsigned char state);
-
-#endif // __PID_H

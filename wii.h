@@ -50,8 +50,7 @@ typedef enum {WII_PATTERN_0000, WII_PATTERN_0001, WII_PATTERN_0011, WII_PATTERN_
 typedef struct {
     int x;
     int y;
-    unsigned char size;
-    WiiFlashPaterns pattern;
+    int size;
 } WiiBlob; 
 
 

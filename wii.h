@@ -73,6 +73,7 @@ void wiiSetupBasic(void);
 *****************************************************************************/
 void wiiSetupAdvance(unsigned char sensitivity, unsigned char mode);
 
+unsigned char wiiStartAsyncRead();
 
 /*****************************************************************************
 * Function Name : wiiGetData

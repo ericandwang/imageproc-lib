@@ -37,23 +37,32 @@
  *  Stanley S. Baek      2009-08-10    Initial release
  *                      
  * Notes:
- *  - Uses an I2C port for communicating with an Wii IR camera (I2C1 for
+ *  - Uses an I2C port for communicating with an Wii IR camera (I2C2 for
  *    ImageProc1 and I2C2 for ImageProc2)
  */
 
 #include "utils.h"
 #include "i2c.h"
 #include "wii.h"
+#include <string.h>
 
 #define WII_ADDR_RD             0xB1    
 #define WII_ADDR_WR             0xB0    // 0x58 << 1
+#define WII_DATA_REG            0x36
 #define WII_DATA_WAIT           1000
 #define WII_SETUP_DELAY	        10	// 10 is safe...
-#define WII_READ_DELAY          1
-#define WII_POSTREAD_DELAY      4
+#define WII_DATA_WIDTH          12
 
-#define WII_DATA_WIDTH          16
-
+#define WII_IDLE                0
+#define WII_WRITE_START         1
+#define WII_WRITE_ADDR          2
+#define WII_WRITE_REG           3
+#define WII_WRITE_STOP          4
+#define WII_READ_START          5
+#define WII_READ_ADDR           6
+#define WII_GET_REG             7
+#define WII_READ_NACK           8
+#define WII_READ_STOP           9
 
 #define wiiReadString(a,b,c) MastergetsI2C2(a,b,c)
 
@@ -75,12 +84,13 @@ const unsigned char WiiSensitivity[5][11] = {
     
 
 /*-----------------------------------------------------------------------------
- *          Static Variables
+ *          Variables
 -----------------------------------------------------------------------------*/
 
 static unsigned char wiiData[WII_DATA_WIDTH+1];
 // The first byte of wiiData must be thrown away.
-
+static unsigned char bufIdx, state;
+static WiiBlob wiiBlobs[4];
 /*-----------------------------------------------------------------------------
  *          Declaration of static functions
 -----------------------------------------------------------------------------*/
@@ -101,7 +111,7 @@ static void wiiSetupPeripheral(void);
 void wiiSetupBasic(void) {
 
     wiiSetupPeripheral();
-
+    //CRITICAL_SECTION_START
     wiiWrite(0x30, 0x01);
     delay_ms(WII_SETUP_DELAY);
     wiiWrite(0x30, 0x08);
@@ -114,11 +124,38 @@ void wiiSetupBasic(void) {
     delay_ms(WII_SETUP_DELAY);
     wiiWrite(0x33, 0x33);
     delay_ms(WII_SETUP_DELAY);
-
+    //CRITICAL_SECTION_END
+    _MI2C2IF = 0;
+    EnableIntMI2C2;
 }
+
+/*****************************************************************************
+* Function Name : wiiSetupPeripheral
+* Description   : Setup I2C for wiimote
+* Parameters    : None
+* Return Value  : None
+*****************************************************************************/
+static void wiiSetupPeripheral(void) {
+    unsigned int I2C2CONvalue, I2C2BRGvalue;
+    I2C2CONvalue = I2C2_ON & I2C2_IDLE_CON & I2C2_CLK_HLD &
+                   I2C2_IPMI_DIS & I2C2_7BIT_ADD & I2C2_SLW_DIS &
+                   I2C2_SM_DIS & I2C2_GCALL_DIS & I2C2_STR_DIS &
+                   I2C2_NACK & I2C2_ACK_DIS & I2C2_RCV_DIS &
+                   I2C2_STOP_DIS & I2C2_RESTART_DIS & I2C2_START_DIS;
+
+    // BRG = Fcy(1/Fscl - 1/10000000)-1, Fscl = 400KHz  
+    I2C2BRGvalue = 95; 
+    OpenI2C2(I2C2CONvalue, I2C2BRGvalue);
+    IdleI2C2();
+    _MI2C2IF = 0;
+    
+}
+
+
 
 void wiiSetupAdvance(unsigned char sensitivity, unsigned char mode) {
 //sensitivity: 1 = highest sensitivity, 5 = lowest
+
 
     if (sensitivity > 5 || sensitivity < 1) {
         wiiSetupBasic();
@@ -166,11 +203,81 @@ void wiiSetupAdvance(unsigned char sensitivity, unsigned char mode) {
 
 }
 
+unsigned char wiiStartAsyncRead(void){
+    if(state == WII_IDLE) {
+        bufIdx = 0;
+        state = WII_WRITE_START;
+        I2C2CONbits.SEN = 1;
+        return 1;
+    } else {
+        return 0;
+    }
+}
+
+void __attribute__((interrupt, no_auto_psv)) _MI2C2Interrupt(void) {
+
+    CRITICAL_SECTION_START
+
+    switch(state){
+        case WII_IDLE:
+            return;
+        case WII_WRITE_START:
+            I2C2TRN = WII_ADDR_WR;
+            state = WII_WRITE_ADDR;
+            break;
+        case WII_WRITE_ADDR:
+            I2C2TRN = WII_DATA_REG;
+            state = WII_WRITE_REG;
+            break;
+        case WII_WRITE_REG:
+            I2C2CONbits.PEN = 1;
+            state = WII_WRITE_STOP;
+            break;
+        case WII_WRITE_STOP:
+            I2C2CONbits.SEN = 1;
+            state = WII_READ_START;
+            break;
+        case WII_READ_START:
+            I2C2TRN = WII_ADDR_RD;
+            state = WII_READ_ADDR;
+            break;
+        case WII_READ_ADDR:
+            I2C2CONbits.RCEN = 1;
+            state = WII_GET_REG;
+            break;
+        case WII_GET_REG:
+            wiiData[bufIdx++] = I2C2RCV;
+            if(bufIdx <= WII_DATA_WIDTH){
+                state = WII_READ_ADDR;
+                I2C2CONbits.ACKDT = 0;
+                I2C2CONbits.ACKEN = 1;
+            } else {
+                state = WII_READ_NACK;
+                I2C2CONbits.ACKDT = 1;
+                I2C2CONbits.ACKEN = 1;
+            }
+            break;
+        case WII_READ_NACK:
+            I2C2CONbits.PEN = 1;  
+            state = WII_READ_STOP;
+            break;
+        case WII_READ_STOP:
+            wiiConvertData(wiiBlobs);
+            state = WII_IDLE;
+            break;
+
+        default:
+            state = WII_IDLE;
+            break;
+    } 
+    _MI2C2IF = 0;
+    CRITICAL_SECTION_END
+}
+
+
 
 void wiiGetData(WiiBlob* blobs) {
-
-    wiiReadData();
-    wiiConvertData(blobs);
+    memcpy(blobs, wiiBlobs, sizeof(wiiBlobs));
 }
 
 
@@ -205,6 +312,7 @@ void wiiDumpData(unsigned char* buffer) {
 
 
 unsigned char* wiiReadData(void) {
+    CRITICAL_SECTION_START
     wiiStartTx();
     wiiSendByte(WII_ADDR_WR);
     wiiSendByte(0x36);
@@ -214,6 +322,8 @@ unsigned char* wiiReadData(void) {
     wiiSendByte(WII_ADDR_RD);
     wiiReadString(13, wiiData, WII_DATA_WAIT);
     wiiEndTx();   
+    _MI2C2IF = 0;
+    CRITICAL_SECTION_END
     return wiiData + 1; 
 }
 
@@ -369,26 +479,6 @@ static void wiiStartTx(void){
 static void wiiEndTx (void){
     StopI2C2();
     while(I2C2CONbits.PEN);
-}
-
-/*****************************************************************************
-* Function Name : wiiSetupPeripheral
-* Description   : Setup I2C for wiimote
-* Parameters    : None
-* Return Value  : None
-*****************************************************************************/
-static void wiiSetupPeripheral(void) {
-    unsigned int I2C2CONvalue, I2C2BRGvalue;
-    I2C2CONvalue = I2C2_ON & I2C2_IDLE_CON & I2C2_CLK_HLD &
-                   I2C2_IPMI_DIS & I2C2_7BIT_ADD & I2C2_SLW_DIS &
-                   I2C2_SM_DIS & I2C2_GCALL_DIS & I2C2_STR_DIS &
-                   I2C2_NACK & I2C2_ACK_DIS & I2C2_RCV_DIS &
-                   I2C2_STOP_DIS & I2C2_RESTART_DIS & I2C2_START_DIS;
-
-    // BRG = Fcy(1/Fscl - 1/10000000)-1, Fscl = 400KHz 	
-    I2C2BRGvalue = 95; 
-    OpenI2C2(I2C2CONvalue, I2C2BRGvalue);
-    IdleI2C2();
 }
 
 

@@ -53,6 +53,8 @@ typedef struct {
     int size;
 } WiiBlob; 
 
+extern WiiBlob wiiBlobs[4];
+
 
 /******************************************************************************
 * Function Name : wiiSetupBasic

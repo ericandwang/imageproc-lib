@@ -90,7 +90,7 @@ const unsigned char WiiSensitivity[5][11] = {
 static unsigned char wiiData[WII_DATA_WIDTH+1];
 // The first byte of wiiData must be thrown away.
 static unsigned char bufIdx, state;
-static WiiBlob wiiBlobs[4];
+WiiBlob wiiBlobs[4];
 /*-----------------------------------------------------------------------------
  *          Declaration of static functions
 -----------------------------------------------------------------------------*/
@@ -161,8 +161,6 @@ void wiiSetupAdvance(unsigned char sensitivity, unsigned char mode) {
         wiiSetupBasic();
         return;
     }
-
-    wiiSetupPeripheral();
     wiiWrite(0x30, 0x01);
     delay_ms(WII_SETUP_DELAY);
     
@@ -200,7 +198,6 @@ void wiiSetupAdvance(unsigned char sensitivity, unsigned char mode) {
 
     wiiWrite(0x30, 0x08);
     delay_ms(WII_SETUP_DELAY);
-
 }
 
 unsigned char wiiStartAsyncRead(void){
@@ -287,8 +284,8 @@ void wiiConvertData(WiiBlob *blobs) {
     unsigned int i;
 
     for (i = 0; i < 4; i++) {
-        blobs[i].x = (((unsigned int)wiidata[i*3+2] & 0x0030) << 4) + wiidata[i*3];
-        blobs[i].y = (((unsigned int)wiidata[i*3+2] & 0x00C0) << 2) + wiidata[i*3+1];
+        blobs[i].x = 1023 - ((((unsigned int)wiidata[i*3+2] & 0x0030) << 4) + wiidata[i*3]);
+        blobs[i].y = 768 - ((((unsigned int)wiidata[i*3+2] & 0x00C0) << 2) + wiidata[i*3+1]);
         blobs[i].size = wiidata[i*3+2] & 0x0F;
 
         if (blobs[i].x < 5 || blobs[i].x > 1018 || blobs[i].y < 5 || blobs[i].y > 763) {

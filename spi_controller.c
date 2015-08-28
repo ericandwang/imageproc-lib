@@ -55,11 +55,13 @@
  This is now done in bsp-ip*.h
 // This section is board-specific
 // TODO: Generalize or move to BSP header
+
 #if defined(__IMAGEPROC2)
 
     #define SPI1_CS             (_LATB2)    // Radio Chip Select
     #define SPI2_CS1            (_LATG9)    // Flash Chip Select
     #define SPI2_CS2            (_LATC15)   // MPU6000 Chip Select
+    #define SPI2_CS3            (_LATB1)    // AS5047P Select
 
 #endif
 */
@@ -102,11 +104,11 @@ static void setupDMASet2(void);
 
 /** Interrupt handlers */
 static SpicIrqHandler int_handler_ch1[1];
-static SpicIrqHandler int_handler_ch2[2];
+static SpicIrqHandler int_handler_ch2[3];
 
 /** Port configurations */
 static unsigned int spicon_ch1[1];
-static unsigned int spicon_ch2[2];
+static unsigned int spicon_ch2[3];
 
 /** Current port statuses */
 DECLARE_SPINLOCK_H(spi_port_ch1);
@@ -179,8 +181,8 @@ int spic2BeginTransaction(unsigned char cs) {
     // TODO: Timeout?
 
     // TODO: generalize?
-    if (cs > 1)
-      // Two CS lines are supported
+    if (cs > 2)
+      // Three CS lines are supported
       return -1;
 
     spi_port_ch2_lock(); // Wait for port to become available
@@ -193,7 +195,8 @@ int spic2BeginTransaction(unsigned char cs) {
       SPI2_CS1 = SPI_CS_ACTIVE;     // Activate chip select
     if (cs == 1)
       SPI2_CS2 = SPI_CS_ACTIVE;     // Activate chip select
-
+    if (cs == 2)
+      SPI2_CS3 = SPI_CS_ACTIVE;     // Activate chip select
     return 0;
 }
 
@@ -211,6 +214,8 @@ void spic2EndTransaction(void) {
       SPI2_CS1 = SPI_CS_IDLE;  // Idle chip select
     if (port_cs_line[1] == 1)
       SPI2_CS2 = SPI_CS_IDLE;  // Idle chip select
+    if (port_cs_line[1] == 2)
+      SPI2_CS3 = SPI_CS_IDLE;  // Idle chip select
     spi_port_ch2_unlock();     // Free port
 
 }
@@ -229,6 +234,7 @@ void spic2Reset(void) {
 
     SPI2_CS1 = SPI_CS_IDLE;         // Disable chip select
     SPI2_CS2 = SPI_CS_IDLE;         // Disable chip select
+    SPI2_CS3 = SPI_CS_IDLE;         // Disable chip select
     SPIC2_DMAR_CONbits.CHEN = 0;    // Disable DMA module
     SPIC2_DMAW_CONbits.CHEN = 0;
     SPI2STATbits.SPIROV = 0;
@@ -260,6 +266,18 @@ unsigned char spic2Transmit(unsigned char data) {
 
 }
 
+unsigned short spic2Transmit16(unsigned short data) {
+
+    unsigned short c;
+    SPI2STATbits.SPIROV = 0;        // Clear overflow bit
+    SPI2BUF = data;                 // Initiate SPI bus cycle by byte write
+    while(SPI2STATbits.SPITBF);     // Wait for transmit to complete
+    while(!SPI2STATbits.SPIRBF);    // Wait for receive to complete
+    c = SPI2BUF;                    // Read out received data to avoid overflow
+    return c;
+
+}
+
 // Note that this is the same as transmit with data = 0x00
 unsigned char spic1Receive(void) {
 
@@ -273,6 +291,19 @@ unsigned char spic1Receive(void) {
 
 }
 
+
+// Note that this is the same as transmit with data = 0x00
+unsigned short spic2Receive16(void) {
+
+    unsigned short c;
+    SPI2STATbits.SPIROV = 0;        // Clear overflow bit
+    SPI2BUF = 0x0000;                   // Initiate SPI bus cycle by byte write
+    while(SPI2STATbits.SPITBF);        // Wait for transmit to complete
+    while(!SPI2STATbits.SPIRBF);    // Wait for receive to complete
+    c = SPI2BUF;                    // Read out received data to avoid overflow
+    return c;
+
+}
 
 // Note that this is the same as transmit with data = 0x00
 unsigned char spic2Receive(void) {

@@ -201,6 +201,7 @@ void spic2Reset(void);
  * @return Byte read from SPI bus
  */
 unsigned char spic2Transmit(unsigned char data);
+unsigned short spic2Transmit16(unsigned short data);
 
 /**
  * Receive a byte on port 2 by writing a NULL byte.
@@ -208,6 +209,7 @@ unsigned char spic2Transmit(unsigned char data);
  * @return Byte read from SPI bus
  */
 unsigned char spic2Receive(void);
+unsigned short spic2Receive16(void);
 
 /**
  * Transmit the contents of a buffer on port 2 via DMA

@@ -24,11 +24,14 @@
 #define DFMEM_CS    0 //On SPI channel 2
 //MPU defines
 #define MPU_CS      1 //On SPI channel 2
+//AS5047 defines
+#define AMS_CS      2 //On SPI channel 2
 
 //These should probably be in a chip support package include, rather than BSP
 #define SPI1_CS             (_LATB2)    // Radio Chip Select
 #define SPI2_CS1            (_LATG9)    // Flash Chip Select
 #define SPI2_CS2            (_LATC15)   // MPU6000 Chip Select
+#define SPI2_CS3            (_LATB1)    // AS5047P Select
 
 //LED colors
 //TODO (): Should this be here? Since any color LED could end up installed

@@ -157,7 +157,7 @@ void SetupPorts(void)
     // SLPTR for Radio is an output (RB15)
     // A/D Conv: RB-1, RB5, and RB8 are analog inputs
     LATB  = 0x0000;
-    TRISB = 0b0000111111111011;
+    TRISB = 0b0000111111111001;
 
     // Camera PWDN: RC14 is an output; SPI2 RC15 is also output.
     LATC  = 0b1000000000000000;

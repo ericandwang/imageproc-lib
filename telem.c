@@ -87,7 +87,6 @@ unsigned int telemPacketSize;
 static unsigned long samplesToSave = 0;
 //Skip counter for dividing the 300hz timer into lower telemetry rates
 static unsigned int telemSkipNum = DEFAULT_SKIP_NUM;
-static unsigned int skipcounter = DEFAULT_SKIP_NUM;
 static unsigned long sampIdx = 0;
 
 //static unsigned long samplesToStream = 0;
@@ -168,6 +167,7 @@ void telemReadbackSamples(unsigned long numSamples, unsigned int src_addr) {
     //This is a terrible hack to avoid bus conflicts.
     //TODO: find source of bus problems and fix
     DisableIntT1;
+    DisableIntT5;
 
     for (i = 0; i < numSamples; i++) {
         //Retireve data from flash
@@ -187,6 +187,7 @@ void telemReadbackSamples(unsigned long numSamples, unsigned int src_addr) {
     //This is a terrible hack to avoid bus conflicts.
     //TODO: find source of bus problems and fix
     EnableIntT1;
+    EnableIntT5;
 }
 
 void telemSendDataDelay(telemStruct_t* sample, int delaytime_ms, unsigned int src_addr) {
@@ -218,9 +219,6 @@ void telemErase(unsigned long numSamples) {
 
     //Green LED will be used as progress indicator
 
-    //Horibble hack: Disable IMU while erasing flash
-    _T4IE = 0;
-
     LED_GREEN = 1;
     unsigned int firstPageOfSector, i;
 
@@ -237,6 +235,7 @@ void telemErase(unsigned long numSamples) {
     //This is a terrible hack to avoid bus conflicts.
     //TODO: find source of bus problems and fix
     DisableIntT1;
+    DisableIntT5;
 
     //At this point, it is impossible for numSectors == 0
     //Sector 0a and 0b will be erased together always, for simplicity
@@ -269,12 +268,11 @@ void telemErase(unsigned long numSamples) {
     //This is a terrible hack to avoid bus conflicts.
     //TODO: find source of bus problems and fix
     EnableIntT1;
+    EnableIntT5;
 
     //Since we've erased, reset our place keeper vars
     dfmemZeroIndex();
 
-    //Horibble hack: Disable IMU while erasing flash
-    _T4IE = 1;
 }
 
 
@@ -300,23 +298,16 @@ static void telemISRHandler() {
 
     //skipcounter decrements to 0, triggering a telemetry save, and resets
     // value of skicounter
-    if (skipcounter == 0) {
-        if (samplesToSave > 0) {
-            telemBuffer.timestamp = sclockGetTime() - telemStartTime;
-            telemBuffer.sampleIndex = sampIdx;
-            //Write telemetry data into packet
-            //TELEMPACKFUNC((unsigned char*) &(telemBuffer.telemData));
-            TELEMPACKFUNC( &(telemBuffer.telemData) );
+    if (samplesToSave > 0) {
+        telemBuffer.timestamp = sclockGetTime() - telemStartTime;
+        telemBuffer.sampleIndex = sampIdx;
+        //Write telemetry data into packet
+        //TELEMPACKFUNC((unsigned char*) &(telemBuffer.telemData));
+        TELEMPACKFUNC( &(telemBuffer.telemData) );
 
-            telemSaveData(&telemBuffer);
-            sampIdx++;
-        }
-        //Reset value of skip counter
-        skipcounter = telemSkipNum;
+        telemSaveData(&telemBuffer);
+        sampIdx++;
     }
-    //Always decrement skip counter at every interrupt, at 300Hz
-    //This way, if telemSkipNum = 1, a sample is saved at every interrupt.
-    skipcounter--;
 
 }
 

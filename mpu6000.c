@@ -139,7 +139,7 @@ void mpuSetup(void) {
 
   setupSPI(0);  // Setup SPI for highspeed data readback. Can do 20MHz, set for 13
 
-  mpuRunCalib(1000, 1000);
+  // mpuRunCalib(200, 200);
 }
 
 void mpuRunCalib(unsigned int discard, unsigned int count) {

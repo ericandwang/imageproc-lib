@@ -70,13 +70,6 @@ typedef enum {
     SPIC_TRANS_TIMEOUT, /** Transceive timeout */
 } SpicIrqSrc;
 
-/** Port status codes */
-typedef enum {
-    STAT_SPI_CLOSED, /** Port not initialized */
-    STAT_SPI_OPEN,  /** Port not busy */
-    STAT_SPI_BUSY,  /** Port busy */
-} SpicStatus;
-
 /**
  * Interrupt handler type that must be registered to the driver.
  * The handler is called on interrupts with the source as the parameter.
@@ -208,6 +201,7 @@ void spic2Reset(void);
  * @return Byte read from SPI bus
  */
 unsigned char spic2Transmit(unsigned char data);
+unsigned short spic2Transmit16(unsigned short data);
 
 /**
  * Receive a byte on port 2 by writing a NULL byte.
@@ -215,6 +209,7 @@ unsigned char spic2Transmit(unsigned char data);
  * @return Byte read from SPI bus
  */
 unsigned char spic2Receive(void);
+unsigned short spic2Receive16(void);
 
 /**
  * Transmit the contents of a buffer on port 2 via DMA

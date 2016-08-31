@@ -39,7 +39,7 @@
  *
  */
 
-#include "p33Fxxxx.h"
+#include <xc.h>
 #include "adc.h"
 
 /* Configuration Bits (macros defined in processor header) */
@@ -150,14 +150,14 @@ void SetupPorts(void)
     TRISE = 0b00000000;
 
 
-#elif defined(__IMAGEPROC2)
+#elif defined(__IMAGEPROC24) || defined(__IMAGEPROC25)
 
     // LEDs: RB12-14 are outputs
     // SPI1 Slave Select is an output (RB2)
     // SLPTR for Radio is an output (RB15)
     // A/D Conv: RB-1, RB5, and RB8 are analog inputs
     LATB  = 0x0000;
-    TRISB = 0b0000111111111011;
+    TRISB = 0b0000111111111001;
 
     // Camera PWDN: RC14 is an output; SPI2 RC15 is also output.
     LATC  = 0b1000000000000000;

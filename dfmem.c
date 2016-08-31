@@ -57,28 +57,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "p33Fxxxx.h"
+#include <xc.h>
 #include "spi.h"
 #include "dfmem.h"
 #include "spi_controller.h"        // For DMA
 #include "utils.h"
-
-// TODO (humhu) : Consolidate into some BSP header
-#if (defined(__IMAGEPROC1) || defined(__IMAGEPROC2) || defined(__MIKRO) || defined(__EXP16DEV))
-// MIKRO & EXP16DEV has no FLASHMEM, but needs this for compile
-
-    // SPIx pins
-    #define SPI_CS          _LATG9
-
-    // SPIx Registers
-    #define SPI_BUF         SPI2BUF
-    #define SPI_CON1        SPI2CON1
-    #define SPI_CON2        SPI2CON2
-    #define SPI_STAT        SPI2STAT
-    #define SPI_STATbits    SPI2STATbits
-    #define SPI_CON1bits    SPI2CON1bits
-
-#endif
 
 // Flash geometry
 // 8 Mbit
@@ -146,16 +129,11 @@
 // Memory geometry
 static DfmemGeometryStruct dfmem_geo;
 
-extern SpicStatus port_status[SPIC_NUM_PORTS];  // for debugging of SPI contention
-
 
 // Placeholders
 static unsigned int currentBuffer = 0;
 static unsigned int currentBufferOffset = 0;
 static unsigned int nextPage = 0;
-
-// Chip select
-static unsigned char spi_cs;
 
 enum FlashSizeType {
     DFMEM_8MBIT    = 0b00101,
@@ -169,6 +147,9 @@ union {
     unsigned char chr_addr[4];
 } MemAddr;
 
+unsigned char userSecRegID[64];
+unsigned char factorySecRegID[64];
+
 /*----------------------------------------------------------------------------
  *          Declaration of private functions
  ---------------------------------------------------------------------------*/
@@ -179,6 +160,7 @@ static inline void dfmemSelectChip(void);
 static inline void dfmemDeselectChip(void);
 static void dfmemSetupPeripheral(void);
 static void dfmemGeometrySetup(void);
+static void dfmemReadSecurityRegister(void);
 
 static void spiCallback(unsigned int irq_source);
 
@@ -186,14 +168,17 @@ static void spiCallback(unsigned int irq_source);
  *          Public functions
 -----------------------------------------------------------------------------*/
 
-void dfmemSetup(unsigned char cs)
+void dfmemSetup(void)
 {
-    spi_cs = cs;
     dfmemSetupPeripheral();
-    spic2SetCallback(cs, &spiCallback);
+    spic2SetCallback(DFMEM_CS, &spiCallback);
     while(!dfmemIsReady());
 
     dfmemGeometrySetup();
+
+    //Readback security register, which gets chip-unique identifiers
+    // ID is stored in a static var here, and dfmem has a public getter
+    dfmemReadSecurityRegister();
 }
 
 void dfmemWrite (unsigned char *data, unsigned int length, unsigned int page,
@@ -518,6 +503,12 @@ void dfmemZeroIndex()
     nextPage = 0;
 }
 
+uint64_t dfmemGetUnqiueID(){
+    //Grab first 8 bytes of 64-byte factory value
+    uint64_t id = *((uint64_t*)(factorySecRegID));
+    return id;
+}
+
 /*-----------------------------------------------------------------------------
  *          Private functions
 -----------------------------------------------------------------------------*/
@@ -559,7 +550,7 @@ static inline unsigned char dfmemReadByte (void)
 }
 
 // Selects the memory chip.
-static inline void dfmemSelectChip(void) { spic2BeginTransaction(spi_cs); }
+static inline void dfmemSelectChip(void) { spic2BeginTransaction(DFMEM_CS); }
 
 // De-selects the memory chip.
 static inline void dfmemDeselectChip(void) { spic2EndTransaction(); }
@@ -569,7 +560,7 @@ static inline void dfmemDeselectChip(void) { spic2EndTransaction(); }
 // The MCU is the SPI master and the clock isn't continuous.
 static void dfmemSetupPeripheral(void)
 {
-    spicSetupChannel2(spi_cs,
+    spicSetupChannel2(DFMEM_CS,
                       ENABLE_SCK_PIN &
                       ENABLE_SDO_PIN &
                       SPI_MODE16_OFF &
@@ -633,4 +624,28 @@ static void dfmemGeometrySetup(void)
             // TODO (apullin, fgb) : Do something. Probably communicate back with user.
             break;
     }
+}
+
+static void dfmemReadSecurityRegister(void){
+
+    int i; // Loop variable, MPLABX is not C99 standard
+
+    dfmemSelectChip();
+
+    dfmemWriteByte(0x77); //Read security register opcode
+    dfmemWriteByte(0x77); //Dummy write, 3 bytes required for opcode 0x77
+    dfmemWriteByte(0x77); //Dummy write, 3 bytes required for opcode 0x77
+    dfmemWriteByte(0x77); //Dummy write, 3 bytes required for opcode 0x77
+
+    //User ID is the first 64 bytes
+    for(i = 0; i < 64; i++){
+        userSecRegID[i] = dfmemReadByte();
+    }
+
+    //Factory ID is the second 64 bytes
+    for(i = 0; i < 64; i++){
+        factorySecRegID[i] = dfmemReadByte();
+    }
+    dfmemDeselectChip();
+
 }

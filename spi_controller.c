@@ -42,6 +42,7 @@
  */
 
 #include "spi_controller.h"
+#include "atomic.h"
 #include "spi.h"
 #include "timer.h"
 #include "dma.h"
@@ -50,15 +51,21 @@
 
 #include <string.h>
 
+/*
+ This is now done in bsp-ip*.h
 // This section is board-specific
 // TODO: Generalize or move to BSP header
+
 #if defined(__IMAGEPROC2)
 
     #define SPI1_CS             (_LATB2)    // Radio Chip Select
     #define SPI2_CS1            (_LATG9)    // Flash Chip Select
     #define SPI2_CS2            (_LATC15)   // MPU6000 Chip Select
+    #define SPI2_CS3            (_LATB1)    // AS5047P Select
 
 #endif
+*/
+
 // DMA channels allocated as per Wiki assignments
 #define SPIC1_DMAR_CONbits      (DMA2CONbits)
 #define SPIC1_DMAR_CNT          (DMA2CNT)
@@ -97,14 +104,17 @@ static void setupDMASet2(void);
 
 /** Interrupt handlers */
 static SpicIrqHandler int_handler_ch1[1];
-static SpicIrqHandler int_handler_ch2[2];
+static SpicIrqHandler int_handler_ch2[3];
 
 /** Port configurations */
 static unsigned int spicon_ch1[1];
-static unsigned int spicon_ch2[2];
+static unsigned int spicon_ch2[3];
 
 /** Current port statuses */
-SpicStatus port_status[SPIC_NUM_PORTS];
+DECLARE_SPINLOCK_H(spi_port_ch1);
+DECLARE_SPINLOCK_C(spi_port_ch1);
+DECLARE_SPINLOCK_H(spi_port_ch2);
+DECLARE_SPINLOCK_C(spi_port_ch2);
 
 /** Current port chip select */
 static unsigned char port_cs_line[SPIC_NUM_PORTS];
@@ -123,7 +133,7 @@ void spicSetupChannel1(unsigned char cs, unsigned int spiCon1) {
 
     setupDMASet1();                     // Set up DMA channels
     spicon_ch1[cs] = spiCon1;           // Remember SPI config
-    port_status[0] = STAT_SPI_CLOSED;   // Initialize status
+    spi_port_ch1_reset();               // Initialize status
 
 }
 
@@ -131,7 +141,7 @@ void spicSetupChannel2(unsigned char cs, unsigned int spiCon1) {
 
     setupDMASet2();
     spicon_ch2[cs] = spiCon1;           // Remember SPI config
-    port_status[1] = STAT_SPI_CLOSED;
+    spi_port_ch2_reset();               // Initialize status
 
 }
 
@@ -150,16 +160,13 @@ void spic2SetCallback(unsigned char cs, SpicIrqHandler handler) {
 
 int spic1BeginTransaction(unsigned char cs) {
     // TODO: Timeout?
-    // TODO: Possible race condition if interrupt/non-interrrupt both try to
-    //  start a transaction. Need to change this to atomic test-and-set
 
     // TODO: generalize?
     if (cs > 0)
       // Only one CS line is supported
       return -1;
 
-    while(port_status[0] == STAT_SPI_BUSY); // Wait for port to become available
-    port_status[0] = STAT_SPI_BUSY;
+    spi_port_ch1_lock(); // Wait for port to become available
     // Reconfigure port
     SPI1STAT = 0;
     SPI1CON1 = spicon_ch1[cs];
@@ -172,14 +179,13 @@ int spic1BeginTransaction(unsigned char cs) {
 
 int spic2BeginTransaction(unsigned char cs) {
     // TODO: Timeout?
-    // TODO: Possible race condition if interrupt/non-interrrupt both try to
-    //  start a transaction. Need to change this to atomic test-and-set
 
     // TODO: generalize?
-    if (cs > 1)
-      // Two CS lines are supported
+    if (cs > 2)
+      // Three CS lines are supported
       return -1;
 
+    spi_port_ch2_lock(); // Wait for port to become available
     // Reconfigure port
     SPI2STAT = 0;
     SPI2CON1 = spicon_ch2[cs];
@@ -189,7 +195,8 @@ int spic2BeginTransaction(unsigned char cs) {
       SPI2_CS1 = SPI_CS_ACTIVE;     // Activate chip select
     if (cs == 1)
       SPI2_CS2 = SPI_CS_ACTIVE;     // Activate chip select
-
+    if (cs == 2)
+      SPI2_CS3 = SPI_CS_ACTIVE;     // Activate chip select
     return 0;
 }
 
@@ -197,7 +204,7 @@ void spic1EndTransaction(void) {
 
     // Only one CS line
     SPI1_CS = SPI_CS_IDLE;  // Idle chip select after freeing since may cause irq
-    port_status[0] = STAT_SPI_OPEN; // Free port
+    spi_port_ch1_unlock();  // Free port
 
 }
 
@@ -207,14 +214,9 @@ void spic2EndTransaction(void) {
       SPI2_CS1 = SPI_CS_IDLE;  // Idle chip select
     if (port_cs_line[1] == 1)
       SPI2_CS2 = SPI_CS_IDLE;  // Idle chip select
-    port_status[1] = STAT_SPI_OPEN; // Free port
-
-}
-
-void spic2cs2EndTransaction(void) {
-
-    port_status[1] = STAT_SPI_OPEN; // Free port
-    SPI2_CS2 = SPI_CS_IDLE;  // Idle chip select
+    if (port_cs_line[1] == 2)
+      SPI2_CS3 = SPI_CS_IDLE;  // Idle chip select
+    spi_port_ch2_unlock();     // Free port
 
 }
 
@@ -224,7 +226,7 @@ void spic1Reset(void) {
     SPIC1_DMAR_CONbits.CHEN = 0;    // Disable DMA module
     SPIC1_DMAW_CONbits.CHEN = 0;
     SPI1STATbits.SPIROV = 0;        // Clear overwrite bit
-    port_status[0] = STAT_SPI_OPEN;    // Release lock on channel
+    spi_port_ch2_unlock();          // Release lock on channel
 
 }
 
@@ -232,10 +234,11 @@ void spic2Reset(void) {
 
     SPI2_CS1 = SPI_CS_IDLE;         // Disable chip select
     SPI2_CS2 = SPI_CS_IDLE;         // Disable chip select
+    SPI2_CS3 = SPI_CS_IDLE;         // Disable chip select
     SPIC2_DMAR_CONbits.CHEN = 0;    // Disable DMA module
     SPIC2_DMAW_CONbits.CHEN = 0;
     SPI2STATbits.SPIROV = 0;
-    port_status[1] = STAT_SPI_OPEN;    // Release lock on channel
+    spi_port_ch2_unlock();          // Release lock on channel
 
 }
 
@@ -255,8 +258,20 @@ unsigned char spic2Transmit(unsigned char data) {
 
     unsigned char c;
     SPI2STATbits.SPIROV = 0;        // Clear overflow bit
-    SPI2BUF = data;                   // Initiate SPI bus cycle by byte write
-    while(SPI2STATbits.SPITBF);        // Wait for transmit to complete
+    SPI2BUF = data;                 // Initiate SPI bus cycle by byte write
+    while(SPI2STATbits.SPITBF);     // Wait for transmit to complete
+    while(!SPI2STATbits.SPIRBF);    // Wait for receive to complete
+    c = SPI2BUF;                    // Read out received data to avoid overflow
+    return c;
+
+}
+
+unsigned short spic2Transmit16(unsigned short data) {
+
+    unsigned short c;
+    SPI2STATbits.SPIROV = 0;        // Clear overflow bit
+    SPI2BUF = data;                 // Initiate SPI bus cycle by byte write
+    while(SPI2STATbits.SPITBF);     // Wait for transmit to complete
     while(!SPI2STATbits.SPIRBF);    // Wait for receive to complete
     c = SPI2BUF;                    // Read out received data to avoid overflow
     return c;
@@ -276,6 +291,19 @@ unsigned char spic1Receive(void) {
 
 }
 
+
+// Note that this is the same as transmit with data = 0x00
+unsigned short spic2Receive16(void) {
+
+    unsigned short c;
+    SPI2STATbits.SPIROV = 0;        // Clear overflow bit
+    SPI2BUF = 0x0000;                   // Initiate SPI bus cycle by byte write
+    while(SPI2STATbits.SPITBF);        // Wait for transmit to complete
+    while(!SPI2STATbits.SPIRBF);    // Wait for receive to complete
+    c = SPI2BUF;                    // Read out received data to avoid overflow
+    return c;
+
+}
 
 // Note that this is the same as transmit with data = 0x00
 unsigned char spic2Receive(void) {
@@ -308,8 +336,14 @@ unsigned int spic1MassTransmit(unsigned int len, unsigned char *buff, unsigned i
         SPIC1_DMAW_CONbits.NULLW = 1;
     }
 
-    SPIC1_DMAR_CNT = len;   // Set number of bytes to send
-    SPIC1_DMAW_CNT = len;
+    //From dsPIC33 datasheet:
+    //    DMAxCNT + 1 represents the number of DMA requests the channel must
+    //    service before the data block transfer is considered complete.
+    //    That is, a DMAxCNT value of ?0? will transfer one element.
+    //So, DMAx_CNT = len-1 below. Noted here to prevent confusion.
+    //TODO: will this cause a problem if called with len=0?
+    SPIC1_DMAR_CNT = len - 1;
+    SPIC1_DMAW_CNT = len - 1;
     SPIC1_DMAR_CONbits.CHEN = 1;    // Begin transmission
     SPIC1_DMAW_CONbits.CHEN = 1;
     SPIC1_DMAW_REQbits.FORCE = 1;
@@ -338,8 +372,14 @@ unsigned int spic2MassTransmit(unsigned int len, unsigned char *buff, unsigned i
         SPIC2_DMAW_CONbits.NULLW = 1;
     }
 
-    SPIC2_DMAR_CNT = len;   // Set number of bytes to send
-    SPIC2_DMAW_CNT = len;
+    //From dsPIC33 datasheet:
+    //    DMAxCNT + 1 represents the number of DMA requests the channel must
+    //    service before the data block transfer is considered complete.
+    //    That is, a DMAxCNT value of ?0? will transfer one element.
+    //So, DMAx_CNT = len-1 below. Noted here to prevent confusion.
+    //TODO: will this cause a problem if called with len=0?
+    SPIC2_DMAR_CNT = len - 1;
+    SPIC2_DMAW_CNT = len - 1;
     SPIC2_DMAR_CONbits.CHEN = 1;    // Begin transmission
     SPIC2_DMAW_CONbits.CHEN = 1;
     SPIC2_DMAW_REQbits.FORCE = 1;

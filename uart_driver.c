@@ -5,165 +5,131 @@
 #include "ppool.h"
 #include "utils.h"
 
-static MacPacket tx_packet = NULL;
-static Payload tx_payload = NULL;
-static unsigned char tx_idx;
-static unsigned char tx_checksum;
+volatile packet_union_t pkt_buf_0_;
+volatile packet_union_t pkt_buf_1_;
 
-static MacPacket rx_packet = NULL;
-static Payload rx_payload = NULL;
-static unsigned char rx_idx;
-static unsigned char rx_checksum;
+volatile packet_union_t* in_pkt_;
+volatile packet_union_t* last_bldc_packet;
+volatile uint8_t last_bldc_packet_is_new;
 
-static packet_callback rx_callback = NULL;
+volatile uint32_t in_pkt_idx_;
+volatile uint32_t in_pkt_len_;
+volatile uint8_t in_pkt_crc_;
 
-void uartInit(packet_callback rx_cb) {
+const uint8_t crc8_table[] = {
+0x00, 0xD5, 0x7F, 0xAA, 0xFE, 0x2B, 0x81, 0x54, 0x29, 0xFC, 0x56, 0x83, 0xD7, 0x02, 0xA8, 0x7D,
+0x52, 0x87, 0x2D, 0xF8, 0xAC, 0x79, 0xD3, 0x06, 0x7B, 0xAE, 0x04, 0xD1, 0x85, 0x50, 0xFA, 0x2F,
+0xA4, 0x71, 0xDB, 0x0E, 0x5A, 0x8F, 0x25, 0xF0, 0x8D, 0x58, 0xF2, 0x27, 0x73, 0xA6, 0x0C, 0xD9,
+0xF6, 0x23, 0x89, 0x5C, 0x08, 0xDD, 0x77, 0xA2, 0xDF, 0x0A, 0xA0, 0x75, 0x21, 0xF4, 0x5E, 0x8B,
+0x9D, 0x48, 0xE2, 0x37, 0x63, 0xB6, 0x1C, 0xC9, 0xB4, 0x61, 0xCB, 0x1E, 0x4A, 0x9F, 0x35, 0xE0,
+0xCF, 0x1A, 0xB0, 0x65, 0x31, 0xE4, 0x4E, 0x9B, 0xE6, 0x33, 0x99, 0x4C, 0x18, 0xCD, 0x67, 0xB2,
+0x39, 0xEC, 0x46, 0x93, 0xC7, 0x12, 0xB8, 0x6D, 0x10, 0xC5, 0x6F, 0xBA, 0xEE, 0x3B, 0x91, 0x44,
+0x6B, 0xBE, 0x14, 0xC1, 0x95, 0x40, 0xEA, 0x3F, 0x42, 0x97, 0x3D, 0xE8, 0xBC, 0x69, 0xC3, 0x16,
+0xEF, 0x3A, 0x90, 0x45, 0x11, 0xC4, 0x6E, 0xBB, 0xC6, 0x13, 0xB9, 0x6C, 0x38, 0xED, 0x47, 0x92,
+0xBD, 0x68, 0xC2, 0x17, 0x43, 0x96, 0x3C, 0xE9, 0x94, 0x41, 0xEB, 0x3E, 0x6A, 0xBF, 0x15, 0xC0,
+0x4B, 0x9E, 0x34, 0xE1, 0xB5, 0x60, 0xCA, 0x1F, 0x62, 0xB7, 0x1D, 0xC8, 0x9C, 0x49, 0xE3, 0x36,
+0x19, 0xCC, 0x66, 0xB3, 0xE7, 0x32, 0x98, 0x4D, 0x30, 0xE5, 0x4F, 0x9A, 0xCE, 0x1B, 0xB1, 0x64,
+0x72, 0xA7, 0x0D, 0xD8, 0x8C, 0x59, 0xF3, 0x26, 0x5B, 0x8E, 0x24, 0xF1, 0xA5, 0x70, 0xDA, 0x0F,
+0x20, 0xF5, 0x5F, 0x8A, 0xDE, 0x0B, 0xA1, 0x74, 0x09, 0xDC, 0x76, 0xA3, 0xF7, 0x22, 0x88, 0x5D,
+0xD6, 0x03, 0xA9, 0x7C, 0x28, 0xFD, 0x57, 0x82, 0xFF, 0x2A, 0x80, 0x55, 0x01, 0xD4, 0x7E, 0xAB,
+0x84, 0x51, 0xFB, 0x2E, 0x7A, 0xAF, 0x05, 0xD0, 0xAD, 0x78, 0xD2, 0x07, 0x53, 0x86, 0x2C, 0xF9
+};
+
+uint8_t update_crc8( uint8_t crc, uint8_t c ) {
+  return (crc8_table[crc ^ c]);
+}
+
+uint8_t calculate_crc8(uint8_t *p, unsigned int length) {
+  uint8_t crc;
+  unsigned int i;
+
+  crc = 0;
+
+  for (i=0; i < length; i++) {
+    crc = update_crc8(crc,*p++);
+  }
+  return crc;
+}
+
+void uartInit() {
     /// UART2 for RS-232 w/PC @ 230400, 8bit, No parity, 1 stop bit
     unsigned int U2MODEvalue, U2STAvalue, U2BRGvalue;
     U2MODEvalue = UART_EN & UART_IDLE_CON & UART_IrDA_DISABLE &
                   UART_MODE_SIMPLEX & UART_UEN_00 & UART_DIS_WAKE &
                   UART_DIS_LOOPBACK & UART_DIS_ABAUD & UART_UXRX_IDLE_ONE &
-                  UART_BRGH_FOUR & UART_NO_PAR_8BIT & UART_1STOPBIT;
-    U2STAvalue  = UART_INT_TX & UART_INT_RX_CHAR &UART_SYNC_BREAK_DISABLED &
+                  UART_BRGH_FOUR & UART_NO_PAR_8BIT & UART_2STOPBITS;
+    U2STAvalue  = UART_INT_RX_CHAR & UART_SYNC_BREAK_DISABLED &
                   UART_TX_ENABLE & UART_ADR_DETECT_DIS &
                   UART_IrDA_POL_INV_ZERO; // If not, whole output inverted.
-    U2BRGvalue  = 9; // =3 for 2.5M Baud
-    //U2BRGvalue  = 43; // =43 for 230500Baud (Fcy / ({16|4} * baudrate)) - 1
-    //U2BRGvalue  = 86; // =86 for 115200 Baud
-    //U2BRGvalue  = 1041; // =1041 for 9600 Baud
-    
+    U2BRGvalue  = 10; // Approximately 830kBaud
 
     OpenUART2(U2MODEvalue, U2STAvalue, U2BRGvalue);
 
-    tx_idx = UART_TX_IDLE;
-    rx_idx = UART_RX_IDLE;
-    rx_callback = rx_cb;
+    in_pkt_ = &(pkt_buf_0_);
+    last_bldc_packet = &(pkt_buf_1_);
+    last_bldc_packet_is_new = 0;
 
-    ConfigIntUART2(UART_TX_INT_EN & UART_TX_INT_PR5 & UART_RX_INT_EN & UART_RX_INT_PR6);
+    ConfigIntUART2(UART_RX_INT_EN & UART_RX_INT_PR6);
 }
 
 //General blocking UART send function, appends basic checksum
 unsigned char uartSend(unsigned char length, unsigned char *frame) {
-    int i;
-    unsigned char checksum = 0;
-
-    while(BusyUART2());
-    WriteUART2(length);
-    while(BusyUART2());
-    WriteUART2(~length);
-
-    checksum = 0xFF;
-
+    int i,j;
+    
+    // Calculate CRC and store at end of packet
+    frame[length-1] = calculate_crc8(frame,length-1);
+    
     //send payload data
     for (i = 0; i < length; i++) {
-        checksum += frame[i];
         while(BusyUART2());
         WriteUART2(frame[i]);
+        for(j = 0; j < 200; j++); //Brief wait allows mbed to keep up
     }
 
-    //Send Checksum Data
-    while(BusyUART2());
-    WriteUART2(checksum);
     return 1;
 }
 
-unsigned char uartSendPayload(unsigned char type, unsigned char status, unsigned char length, unsigned char *frame) {
-    MacPacket packet;
-    Payload pld;
-
-    packet = ppoolRequestFullPacket(length);
-    if(packet == NULL)
-        return 0;
-
-    pld = packet->payload;
-    paySetType(pld, type);
-    paySetStatus(pld, status);
-    paySetData(pld, length, frame);
-    if(uartSendPacket(packet)) {
-        return 1;
-    } else {
-        ppoolReturnFullPacket(packet);
-        return 0;
-    }
-}
-
-unsigned char uartSendPacket(MacPacket packet) {
-    LED_3 = 1;
-    if(tx_packet != NULL) {
-        ppoolReturnFullPacket(tx_packet);
-        tx_packet = NULL;
-        tx_idx = UART_TX_IDLE;
-    }
-
-    if(tx_idx == UART_TX_IDLE && packet != NULL && packet->payload_length < UART_MAX_SIZE) {
-        tx_packet = packet;
-        tx_payload = packet->payload;
-        tx_checksum = packet->payload_length + 3; // add three for size, size check, and checksum
-        tx_idx = UART_TX_SEND_SIZE;
-        U2TXREG = tx_checksum;
-        LED_3 = 0;
-        return 1;
-    } else {
-        LED_3 = 0;
-        return 0;
-    }
-}
-
-void __attribute__((interrupt, no_auto_psv)) _U2TXInterrupt(void) {
-    unsigned char tx_byte;
-
-    LED_3 = 1;
-    if(tx_idx != UART_TX_IDLE) {
-        if(tx_idx == UART_TX_SEND_SIZE) {
-            tx_idx = 0;
-            tx_byte = ~tx_checksum; // send size check
-        } else if(tx_idx == tx_payload->data_length + PAYLOAD_HEADER_LENGTH) {
-            ppoolReturnFullPacket(tx_packet);
-            tx_packet = NULL;
-            tx_idx = UART_TX_IDLE;
-            tx_byte = tx_checksum;
-        } else {
-            tx_byte = tx_payload->pld_data[tx_idx++];
-        }
-        tx_checksum += tx_byte;
-        U2TXREG = tx_byte;
-    }
-    _U2TXIF = 0;
-    LED_3 = 0;
-}
-
-//read data from the UART, and call the proper function based on the Xbee code
 void __attribute__((__interrupt__, no_auto_psv)) _U2RXInterrupt(void) {
-    unsigned char rx_byte;
-
-    LED_3 = 1;
+    unsigned char c;
 
     while(U2STAbits.URXDA) {
-        rx_byte = U2RXREG;
+      c = U2RXREG;
+      // If we just received the second character, set packet length
+      if (in_pkt_idx_ == 1) {
+        in_pkt_len_ = c;
+      }
 
-        if(rx_idx == UART_RX_IDLE && rx_byte < UART_MAX_SIZE) {
-            rx_checksum = rx_byte;
-            rx_idx = UART_RX_CHECK_SIZE;
-        } else if(rx_idx == UART_RX_CHECK_SIZE) {
-            if((rx_checksum ^ rx_byte) == 0xFF && rx_checksum < UART_MAX_SIZE) {
-                rx_packet = ppoolRequestFullPacket(rx_checksum - (PAYLOAD_HEADER_LENGTH+3));
-                rx_payload = rx_packet->payload;
-                rx_checksum += rx_byte;
-                rx_idx = 0;
-            } else {
-                rx_checksum = rx_byte;
-            }
-        } else if (rx_idx == rx_payload->data_length + PAYLOAD_HEADER_LENGTH) {
-            if(rx_checksum == rx_byte && rx_callback != NULL) {
-                (rx_callback)(rx_packet);
-            } else {
-                ppoolReturnFullPacket(rx_packet);
-            }
-            rx_idx = UART_RX_IDLE;
-        } else {
-            rx_checksum += rx_byte;
-            rx_payload->pld_data[rx_idx++] = rx_byte;
+      // If there has been a parse error, reset packet buffer
+      if ((in_pkt_idx_ == 0 && c != PKT_START_CHAR) || in_pkt_len_ < sizeof(header_t)+1 ) {
+        in_pkt_idx_ = 0;
+        in_pkt_len_ = MAX_PACKET_LENGTH;
+        in_pkt_crc_ = 0;
+
+      // Store byte in packet buffer and update CRC
+      } else {
+        in_pkt_->raw[in_pkt_idx_++] = c;
+        in_pkt_crc_ = update_crc8(in_pkt_crc_, c);
+      }
+
+      // If we just received the last character and CRC is good,
+      // swap with last_packet and reset packet buffer
+      if (in_pkt_idx_ == in_pkt_len_) {
+        if (in_pkt_crc_ == 0) {
+          last_bldc_packet_is_new = 1;
+          LED_2 ^= 1;
+          LED_3 = 1;
+          if(last_bldc_packet == &(pkt_buf_0_)) {
+              last_bldc_packet = &(pkt_buf_1_);
+              in_pkt_ = &(pkt_buf_0_);
+          } else {
+              last_bldc_packet = &(pkt_buf_0_);
+              in_pkt_ = &(pkt_buf_1_);
+          }
         }
+        in_pkt_idx_ = 0;
+        in_pkt_len_ = MAX_PACKET_LENGTH;
+        in_pkt_crc_ = 0;
+      }
     }
 
     if(U2STAbits.OERR) {
@@ -171,5 +137,4 @@ void __attribute__((__interrupt__, no_auto_psv)) _U2RXInterrupt(void) {
     }
     
     _U2RXIF = 0;
-    LED_3 = 0;
 }

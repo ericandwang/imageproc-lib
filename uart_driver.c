@@ -78,6 +78,8 @@ unsigned char uartSend(unsigned char length, unsigned char *frame) {
     
     // Calculate CRC and store at end of packet
     frame[length-1] = calculate_crc8(frame,length-1);
+
+    LED_3=!LED_3;
     
     //send payload data
     for (i = 0; i < length; i++) {

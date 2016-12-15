@@ -56,7 +56,7 @@ static void tiHSetupPeripheral(void) {
 
     SEVTCMPvalue = sevtcmp_pwm;
     PTCONvalue = PWM_EN & PWM_IDLE_CON & PWM_OP_SCALE1 &
-                 PWM_IPCLK_SCALE1 & PWM_MOD_FREE;
+                 PWM_IPCLK_SCALE16 & PWM_MOD_FREE; // JY edits PWM_IPCLK_SCALE1 for 40kHz
     PWMCON1value = PWM_MOD1_IND & PWM_PEN1L & PWM_MOD2_IND & PWM_PEN2L &
                  PWM_MOD3_IND & PWM_PEN3L & PWM_MOD4_IND & PWM_PEN4L;
     PWMCON2value = PWM_SEVOPS4 & PWM_OSYNC_TCY & PWM_UEN;

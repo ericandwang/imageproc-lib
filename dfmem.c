@@ -426,7 +426,7 @@ unsigned char dfmemGetManufacturerID (void)
     byte = dfmemReadByte();
 
     dfmemDeselectChip();
-
+    
     return byte;
 }
 
@@ -506,6 +506,7 @@ void dfmemZeroIndex()
 uint64_t dfmemGetUnqiueID(){
     //Grab first 8 bytes of 64-byte factory value
     uint64_t id = *((uint64_t*)(factorySecRegID));
+    
     return id;
 }
 

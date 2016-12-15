@@ -163,7 +163,7 @@ void tiHConfigure(unsigned int channel) {
 
     unsigned int bidx = 2*idx; //0,2,4, or 6
 
-    //Direction // JY edits note: PWM3H/L turn of fhere though on in init.c
+    //Direction
     PWMCON1val &= ~( 0b10001 << idx ); //clear PWMxH/L
     PWMCON1val |=  ( lbit << idx);     //set lbit
     PWMCON1val |=  ( hbit << (idx+4)); //set hbit

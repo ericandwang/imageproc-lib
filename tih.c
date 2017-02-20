@@ -111,12 +111,12 @@ void tiHSetDC(unsigned int channel, int dutycycle){
 }
 
 void tiHChangeDirection(unsigned int channel, tiHDriveDir dir){
-    outputs[channel].dir = dir;
+    outputs[channel-1].dir = dir;
     tiHConfigure(channel);
 }
 
 void tiHChangeMode(unsigned int channel, tiHDriveMode mode){
-    outputs[channel].mode = mode;
+    outputs[channel-1].mode = mode;
     tiHConfigure(channel);
 }
 
@@ -135,7 +135,7 @@ void tiHConfigure(unsigned int channel) {
 
     if(outputs[idx].dir == TIH_FWD){
         if(outputs[idx].mode == TIH_MODE_BRAKE){
-            hbit = OUTPUT_GPIO;
+            hbit = OUTPUT_PWM;
             lbit = OUTPUT_PWM;
         }
         else if(outputs[idx].mode == TIH_MODE_COAST){
@@ -149,7 +149,7 @@ void tiHConfigure(unsigned int channel) {
             lbit = OUTPUT_GPIO;
         }
         else if(outputs[idx].mode == TIH_MODE_COAST){
-            hbit = OUTPUT_GPIO;
+            hbit = OUTPUT_PWM;
             lbit = OUTPUT_PWM;
         }
     }

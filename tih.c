@@ -146,10 +146,10 @@ void tiHConfigure(unsigned int channel) {
     else if(outputs[idx].dir == TIH_REV){
         if(outputs[idx].mode == TIH_MODE_BRAKE){
             hbit = OUTPUT_PWM;
-            lbit = OUTPUT_GPIO;
+            lbit = OUTPUT_PWM;
         }
         else if(outputs[idx].mode == TIH_MODE_COAST){
-            hbit = OUTPUT_PWM;
+            hbit = OUTPUT_GPIO;
             lbit = OUTPUT_PWM;
         }
     }

@@ -127,8 +127,8 @@ void mpuSetup(void) {
   writeReg(MPU_REG_GYROCONFIG, 0b00011000);   // Set gyro scale 2000 DPS (8x)
   mpu_params.gyro_scale = GYRO_SCALE_BASE*8;
 
-  writeReg(MPU_REG_XLCONFIG, 0b00010000);     // Set xl scale 8g (4x)
-  mpu_params.xl_scale = XL_SCALE_BASE*4;
+  writeReg(MPU_REG_XLCONFIG, 0b00011000);     // Set xl scale 16g
+  mpu_params.xl_scale = XL_SCALE_BASE*8;
 
   mpu_params.temp_scale = TEMP_SCALE;
   mpu_params.temp_offset = DEFAULT_TEMP_OFFSET;
